@@ -1,0 +1,194 @@
+name: 编译最新正式版ELRS固件
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # 每天 UTC 时间 0:00 运行，即北京时间早上 8:00
+  workflow_dispatch:
+  
+jobs:
+  check_release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.check_release.outputs.tag_name }}
+      has_new_version: ${{ steps.check_release.outputs.has_new_version }}
+    steps:
+      - name: 下载此仓库
+        uses: actions/checkout@v3
+
+      - name: 配置 Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.x
+          
+      - name: 缓存 pip
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.target }}
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: 检查的 ELRS 发布
+        id: check_release
+        run: |
+          python -c "
+          import requests
+          import os
+          from datetime import datetime, timedelta
+
+          url = 'https://api.github.com/repos/ExpressLRS/ExpressLRS/releases/latest'
+          response = requests.get(url)
+          release = response.json()
+          
+          tag_name = release['tag_name']
+          os.system(f'echo "tag_name={tag_name}" >> $GITHUB_OUTPUT')
+          
+          release_date_str = release['published_at']
+          release_date = datetime.strptime(release_date_str, '%Y-%m-%dT%H:%M:%SZ')
+          beijing_time = release_date + timedelta(hours=8)
+
+          print('最新的Release：', tag_name, '  发布于北京时间：', beijing_time.strftime('%Y-%m-%d %H:%M:%S'))
+
+          now = datetime.utcnow()
+          elapsed_time = now - release_date
+
+          if elapsed_time <= timedelta(hours=24):
+            print('最近24小时内有新的Release：', tag_name)
+            os.system('echo "has_new_version='true'" >> $GITHUB_OUTPUT')
+          else:
+            print('最近24小时内没有新的Release，即将退出')
+            os.system('echo "has_new_version='false'" >> $GITHUB_OUTPUT')
+          "
+
+  targets:
+    if: ${{ needs.check_release.outputs.has_new_version == 'true' || github.event_name == 'workflow_dispatch'}}
+    needs: [check_release]
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.set-targets.outputs.targets }}
+    steps:
+      - name: 获取最新 ELRS 设备列表
+        uses: actions/checkout@v3
+        with:
+          repository: ExpressLRS/ExpressLRS
+          ref: ${{ needs.check_release.outputs.tag_name }}
+      - id: set-targets
+        run: |
+          echo "$( (grep '\[env:.*UART\]' src/targets/unified.ini ; grep -r '\[env:.*STLINK\]' src/targets/ ; grep -r '\[env:.*UART\]' src/targets/) | sed 's/.*://' | sed s/.$// | egrep "(STLINK|UART)" | grep -v DEPRECATED )"
+          echo "targets=[$( (grep '\[env:.*UART\]' src/targets/unified.ini ; grep -r '\[env:.*STLINK\]' src/targets/ ; grep -r '\[env:.*UART\]' src/targets/) | sed 's/.*://' | sed s/.$// | egrep "(STLINK|UART)" | grep -v DEPRECATED | tr '\n' ','  | sed 's/,$/"\n/' | sed 's/,/","/'g | sed 's/^/"/')]" >> $GITHUB_OUTPUT
+
+  build:
+    needs: [check_release, targets]
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{fromJSON(needs.targets.outputs.targets)}}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 获取最新 ELRS 代码
+        uses: actions/checkout@v3
+        with:
+          repository: ExpressLRS/ExpressLRS
+          ref: ${{ needs.check_release.outputs.tag_name }}
+
+      - name: 设置 Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.x
+
+      - name: 缓存 pip
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.target }}
+          
+      - name: 安装 PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+          pip install wheel
+      
+      - name: 缓存 PlatformIO
+        uses: actions/cache@v3
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-platformio
+          
+      - name: 编译固件
+        run: |
+          mkdir -p ~/artifacts/firmware
+          cd src
+          platformio pkg install --platform native
+          platformio pkg update
+          case ${{matrix.target}} in
+            *2400* | FM30*)
+              # release builds
+              PLATFORMIO_BUILD_FLAGS="-DRegulatory_Domain_ISM_2400" pio run -e ${{ matrix.target }}
+              OUTDIR=~/artifacts/firmware/FCC/`echo ${{ matrix.target }} | sed s/_via.*//`
+              mkdir -p $OUTDIR
+              mv .pio/build/${{ matrix.target }}/firmware.{elrs,bin} $OUTDIR >& /dev/null || :
+              ;;
+            *)
+              # release build
+              PLATFORMIO_BUILD_FLAGS="-DRegulatory_Domain_FCC_915" pio run -e ${{ matrix.target }}
+              OUTDIR=~/artifacts/firmware/FCC/`echo ${{ matrix.target }} | sed s/_via.*//`
+              mkdir -p $OUTDIR
+              mv .pio/build/${{ matrix.target }}/firmware.{elrs,bin} $OUTDIR >& /dev/null || :
+              ;;
+          esac
+          # copy the common ESP32 files
+          if [[ ${{matrix.target}} == *ESP32* ]] ; then
+            cp ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin ~/artifacts/firmware/
+            mv .pio/build/${{ matrix.target }}/partitions.bin ~/artifacts/firmware/
+            mv .pio/build/${{ matrix.target }}/bootloader.bin ~/artifacts/firmware/bootloader_dio_40m.bin
+          fi
+        
+      - name: 保存固件
+        uses: actions/upload-artifact@v3
+        with:
+          name: firmware
+          path: ~/artifacts/**/*
+        continue-on-error: true
+
+  firmware:
+    needs: [check_release, targets, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载最新 ELRS 代码
+        uses: actions/checkout@v3
+        with:
+          repository: ExpressLRS/ExpressLRS
+          ref: ${{ needs.check_release.outputs.tag_name }}
+
+      - name: 获取固件
+        uses: actions/download-artifact@v3
+        with:
+          name: firmware
+          path: dist
+
+      - name: 复制硬件配置文件到文件夹
+        run: cp -r src/hardware dist/firmware
+
+      - name: 复制 bootloader 到文件夹
+        run: cd src ; find bootloader -name \*.bin -o -name \*.frk | grep -v src/ | cpio -pdm ../dist/firmware
+
+      - name: 上传固件到 artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: firmware
+          path: dist/**/*
+
+      - name: 创建固件压缩包
+        run: |
+          zip -r -9 firmware.zip ./dist/firmware
+      
+      - name: 上传固件到 release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          file: firmware.zip
+          tag: ${{ needs.check_release.outputs.tag_name }}
+          overwrite: true
