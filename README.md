@@ -1,7 +1,8 @@
 # ExpressLRS 固件发布
 
-[![编译最新正式版ELRS固件](https://github.com/L1cardo/ELRS-Firmware-Release/actions/workflows/build.yml/badge.svg)](https://github.com/L1cardo/ELRS-Firmware-Release/actions/workflows/build.yml)
-
+[![Release](https://img.shields.io/github/v/release/L1cardo/ELRS-Firmware-Release?style=flat-square)](https://github.com/L1cardo/ELRS-Firmware-Release/releases)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/L1cardo/ELRS-Firmware-Release/build.yml?label=%E7%BC%96%E8%AF%91%E6%9C%80%E6%96%B0%E7%89%88ELRS%E5%9B%BA%E4%BB%B6&style=flat-square)](https://github.com/L1cardo/ELRS-Firmware-Release/actions)
+[![License](https://img.shields.io/github/license/L1cardo/ELRS-Firmware-Release?style=flat-square)](https://github.com/L1cardo/ELRS-Firmware-Release/blob/master/LICENSE)
 
 本存储库包含了 [ExpressLRS](https://github.com/ExpressLRS/ExpressLRS) 固件的所有发布版本(> 3.2.0)。ExpressLRS 是一个开源的 RC 系统，它使用了 2.4GHz 的无线电频谱，可以提供高速、低延迟和可靠的无线控制，适用于各种无人机和飞行器。
 
