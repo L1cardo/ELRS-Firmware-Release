@@ -184,7 +184,9 @@ jobs:
 
       - name: 创建固件压缩包
         run: |
-          zip -r -9 firmware.zip ./dist/firmware
+          mkdir ./${{ needs.check_release.outputs.tag_name }}
+          cp -r ./dist/firmware/ ./${{ needs.check_release.outputs.tag_name }}
+          zip -r -9 firmware.zip ./${{ needs.check_release.outputs.tag_name }}
       
       - name: 上传固件到 release
         uses: svenstaro/upload-release-action@v2
