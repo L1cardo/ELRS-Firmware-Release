@@ -184,11 +184,12 @@ jobs:
 
       - name: 创建固件压缩包
         run: |
-          zip -r -9 firmware.zip ./dist/firmware
+          zip -r -9 firmware.zip ./firmware
       
       - name: 上传固件到 release
         uses: svenstaro/upload-release-action@v2
         with:
           file: firmware.zip
+          asset_name: $tag.zip
           tag: ${{ needs.check_release.outputs.tag_name }}
           overwrite: true
