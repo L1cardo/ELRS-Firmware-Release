@@ -55,11 +55,11 @@ jobs:
           now = datetime.utcnow()
           elapsed_time = now - release_date
 
-          if elapsed_time <= timedelta(hours=12):
-            print('最近12小时内有新的Release：', tag_name)
+          if elapsed_time <= timedelta(hours=24):
+            print('最近24小时内有新的Release：', tag_name, '  即将开始编译最新版本固件！')
             os.system('echo "has_new_version='true'" >> $GITHUB_OUTPUT')
           else:
-            print('最近12小时内没有新的Release，即将退出')
+            print('最近24小时内没有新的Release，即将退出！')
             os.system('echo "has_new_version='false'" >> $GITHUB_OUTPUT')
           "
 
