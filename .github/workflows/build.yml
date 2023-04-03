@@ -2,7 +2,7 @@ name: 编译最新正式版ELRS固件
 
 on:
   schedule:
-    - cron: '0 0/12 * * *' # 第一次每天 UTC 时间 0:00 运行，即北京时间早上 8:00，此后每 12 小时运行一次
+    - cron: '0 0 * * *' # 第一次每天 UTC 时间 0:00 运行，即北京时间早上 8:00
   workflow_dispatch:
   
 jobs:
