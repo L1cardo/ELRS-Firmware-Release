@@ -2,7 +2,7 @@ name: 编译最新正式版ELRS固件
 
 on:
   schedule:
-    - cron: '0 0 * * *' # 每天 UTC 时间 0:00 运行，即北京时间早上 8:00
+    - cron: '0 0/12 * * *' # 第一次每天 UTC 时间 0:00 运行，即北京时间早上 8:00，此后每 12 小时运行一次
   workflow_dispatch:
   
 jobs:
@@ -55,11 +55,11 @@ jobs:
           now = datetime.utcnow()
           elapsed_time = now - release_date
 
-          if elapsed_time <= timedelta(hours=24):
-            print('最近24小时内有新的Release：', tag_name)
+          if elapsed_time <= timedelta(hours=12):
+            print('最近12小时内有新的Release：', tag_name)
             os.system('echo "has_new_version='true'" >> $GITHUB_OUTPUT')
           else:
-            print('最近24小时内没有新的Release，即将退出')
+            print('最近12小时内没有新的Release，即将退出')
             os.system('echo "has_new_version='false'" >> $GITHUB_OUTPUT')
           "
 
