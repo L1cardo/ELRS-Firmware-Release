@@ -76,12 +76,10 @@ jobs:
           repository: ExpressLRS/ExpressLRS
           ref: ${{ needs.check_release.outputs.tag_name }}
       - id: set-targets
-        run: |
-          echo "$( (grep '\[env:.*UART\]' src/targets/unified.ini ; grep -r '\[env:.*STLINK\]' src/targets/ ; grep -r '\[env:.*UART\]' src/targets/) | sed 's/.*://' | sed s/.$// | egrep "(STLINK|UART)" | grep -v DEPRECATED )"
-          echo "targets=[$( (grep '\[env:.*UART\]' src/targets/unified.ini ; grep -r '\[env:.*STLINK\]' src/targets/ ; grep -r '\[env:.*UART\]' src/targets/) | sed 's/.*://' | sed s/.$// | egrep "(STLINK|UART)" | grep -v DEPRECATED | tr '\n' ','  | sed 's/,$/"\n/' | sed 's/,/","/'g | sed 's/^/"/')]" >> $GITHUB_OUTPUT
-
+        run: echo "targets=[$( (grep '\[env:.*UART\]' src/targets/unified.ini ; grep -r '\[env:.*STLINK\]' src/targets/) | sed 's/.*://' | sed s/.$// | egrep "(STLINK|UART)" | grep -v DEPRECATED | tr '\n' ','  | sed 's/,$/"\n/' | sed 's/,/","/'g | sed 's/^/"/')]" >> $GITHUB_OUTPUT
+          
   build:
-    needs: [check_release, targets]
+    needs: targets
     strategy:
       fail-fast: false
       matrix:
@@ -127,26 +125,25 @@ jobs:
           case ${{matrix.target}} in
             *2400* | FM30*)
               # release builds
+              PLATFORMIO_BUILD_FLAGS="-DRegulatory_Domain_EU_CE_2400" pio run -e ${{ matrix.target }}
+              OUTDIR=~/artifacts/firmware/LBT/`echo ${{ matrix.target }} | sed s/_via.*//`
+              mkdir -p $OUTDIR
+              mv .pio/build/${{ matrix.target }}/*.{elrs,bin} $OUTDIR >& /dev/null || :
+
               PLATFORMIO_BUILD_FLAGS="-DRegulatory_Domain_ISM_2400" pio run -e ${{ matrix.target }}
               OUTDIR=~/artifacts/firmware/FCC/`echo ${{ matrix.target }} | sed s/_via.*//`
               mkdir -p $OUTDIR
-              mv .pio/build/${{ matrix.target }}/firmware.{elrs,bin} $OUTDIR >& /dev/null || :
+              mv .pio/build/${{ matrix.target }}/*.{elrs,bin} $OUTDIR >& /dev/null || :
               ;;
             *)
               # release build
               PLATFORMIO_BUILD_FLAGS="-DRegulatory_Domain_FCC_915" pio run -e ${{ matrix.target }}
               OUTDIR=~/artifacts/firmware/FCC/`echo ${{ matrix.target }} | sed s/_via.*//`
               mkdir -p $OUTDIR
-              mv .pio/build/${{ matrix.target }}/firmware.{elrs,bin} $OUTDIR >& /dev/null || :
+              mv .pio/build/${{ matrix.target }}/*.{elrs,bin} $OUTDIR >& /dev/null || :
               ;;
           esac
-          # copy the common ESP32 files
-          if [[ ${{matrix.target}} == *ESP32* ]] ; then
-            cp ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin ~/artifacts/firmware/
-            mv .pio/build/${{ matrix.target }}/partitions.bin ~/artifacts/firmware/
-            mv .pio/build/${{ matrix.target }}/bootloader.bin ~/artifacts/firmware/bootloader_dio_40m.bin
-          fi
-        
+          
       - name: 保存固件
         uses: actions/upload-artifact@v3
         with:
@@ -155,7 +152,7 @@ jobs:
         continue-on-error: true
 
   firmware:
-    needs: [check_release, targets, build]
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - name: 下载最新 ELRS 代码
@@ -163,6 +160,7 @@ jobs:
         with:
           repository: ExpressLRS/ExpressLRS
           ref: ${{ needs.check_release.outputs.tag_name }}
+          fetch-depth: 0
 
       - name: 获取固件
         uses: actions/download-artifact@v3
@@ -173,9 +171,25 @@ jobs:
       - name: 复制硬件配置文件到文件夹
         run: cp -r src/hardware dist/firmware
 
+      - name: 复制 Lua 脚本到文件夹
+        run: |
+          mkdir -p dist/firmware/lua
+          cp -r src/lua/elrsV3.lua dist/firmware/lua
+
       - name: 复制 bootloader 到文件夹
         run: cd src ; find bootloader -name \*.bin -o -name \*.frk | grep -v src/ | cpio -pdm ../dist/firmware
 
+      - name: 设置 Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: 用 shiv 编译挂件刷写进制文件
+        run: |
+          cd src/python
+          pip install shiv
+          shiv -c flash -o ../../dist/firmware/flasher.pyz pyserial .
+      
       - name: 上传固件到 artifact
         uses: actions/upload-artifact@v3
         with:
@@ -184,9 +198,10 @@ jobs:
 
       - name: 创建固件压缩包
         run: |
+          cd dist
           mkdir ./${{ needs.check_release.outputs.tag_name }}
-          cp -r ./dist/firmware/ ./${{ needs.check_release.outputs.tag_name }}
-          zip -r -9 firmware.zip ./${{ needs.check_release.outputs.tag_name }}
+          cp -r ./firmware ./${{ needs.check_release.outputs.tag_name }}
+          zip -r -9 ../firmware.zip ./${{ needs.check_release.outputs.tag_name }}
       
       - name: 上传固件到 release
         uses: svenstaro/upload-release-action@v2
