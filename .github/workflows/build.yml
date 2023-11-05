@@ -80,7 +80,7 @@ jobs:
         run: echo "targets=[$( (grep '\[env:.*UART\]' src/targets/unified.ini ; grep -r '\[env:.*STLINK\]' src/targets/) | sed 's/.*://' | sed s/.$// | egrep "(STLINK|UART)" | grep -v DEPRECATED | tr '\n' ','  | sed 's/,$/"\n/' | sed 's/,/","/'g | sed 's/^/"/')]" >> $GITHUB_OUTPUT
           
   build:
-    needs: targets
+    needs: [check_release, targets]
     strategy:
       fail-fast: false
       matrix:
@@ -154,7 +154,7 @@ jobs:
         continue-on-error: true
 
   firmware:
-    needs: build
+    needs: [check_release, targets, build]
     runs-on: ubuntu-latest
     steps:
       - name: 下载最新 ELRS 代码
