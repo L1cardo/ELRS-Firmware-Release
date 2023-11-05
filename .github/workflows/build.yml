@@ -13,7 +13,7 @@ jobs:
       has_new_version: ${{ steps.check_release.outputs.has_new_version }}
     steps:
       - name: 下载此仓库
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: 配置 Python
         uses: actions/setup-python@v4
@@ -59,7 +59,7 @@ jobs:
             print('最近24小时内有新的Release：', tag_name, '  即将开始编译最新版本固件！')
             os.system('echo "has_new_version='true'" >> $GITHUB_OUTPUT')
           else:
-            print('最近24小时内没有新的Release，即将退出！')
+            print('最近24小时内没有新的Release，即将退出！(手动运行时请忽略)')
             os.system('echo "has_new_version='false'" >> $GITHUB_OUTPUT')
           "
 
@@ -71,9 +71,10 @@ jobs:
       targets: ${{ steps.set-targets.outputs.targets }}
     steps:
       - name: 获取最新 ELRS 设备列表
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ExpressLRS/ExpressLRS
+          fetch-depth: 0
           ref: ${{ needs.check_release.outputs.tag_name }}
       - id: set-targets
         run: echo "targets=[$( (grep '\[env:.*UART\]' src/targets/unified.ini ; grep -r '\[env:.*STLINK\]' src/targets/) | sed 's/.*://' | sed s/.$// | egrep "(STLINK|UART)" | grep -v DEPRECATED | tr '\n' ','  | sed 's/,$/"\n/' | sed 's/,/","/'g | sed 's/^/"/')]" >> $GITHUB_OUTPUT
@@ -88,9 +89,10 @@ jobs:
 
     steps:
       - name: 获取最新 ELRS 代码
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ExpressLRS/ExpressLRS
+          fetch-depth: 0
           ref: ${{ needs.check_release.outputs.tag_name }}
 
       - name: 设置 Python
@@ -156,17 +158,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 下载最新 ELRS 代码
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ExpressLRS/ExpressLRS
-          ref: ${{ needs.check_release.outputs.tag_name }}
           fetch-depth: 0
+          ref: ${{ needs.check_release.outputs.tag_name }}
 
       - name: 获取固件
         uses: actions/download-artifact@v3
         with:
           name: firmware
           path: dist
+
+      - name: 获取硬件目录
+        uses: actions/checkout@v4
+        with:
+          repository: ExpressLRS/targets
+          fetch-depth: 0
+          path: src/hardware
 
       - name: 复制硬件配置文件到文件夹
         run: cp -r src/hardware dist/firmware
